@@ -30,9 +30,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db: 
     # 已初始化直接返回
     if db.user_exists(user_id):
         await update.message.reply_text(
-            f"欢迎回来，{full_name}！\n"
-            "您已经初始化过了。\n"
-            "发送 /help 查看可用命令。"
+            f"🌱 欢迎回来，{full_name}！\n"
+            "小芽精灵一直在等你 ✨\n"
+            "发送 /help 查看可用命令"
         )
         return
 
@@ -89,7 +89,9 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db
         return
 
     await update.message.reply_text(
-        f"💰 积分余额\n\n当前积分：{user['balance']} 分"
+        f"🌱 小芽精灵 · 积分\n\n💰 当前积分：{user['balance']} 分\n\n"
+        "获取更多积分：\n"
+        "/qd 每日签到 · /invite 邀请好友"
     )
 
 
@@ -126,7 +128,7 @@ async def checkin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db
     if db.checkin(user_id):
         user = db.get_user(user_id)
         await update.message.reply_text(
-            f"✅ 签到成功！\n获得积分：+1\n当前积分：{user['balance']} 分"
+            f"🌱 签到成功！\n\n🎁 获得积分：+1\n💰 当前积分：{user['balance']} 分\n\n明天记得再来哦 ✨"
         )
     else:
         # 如果数据库层面返回False，说明今天已签到（双重保险）
@@ -152,8 +154,10 @@ async def invite_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db:
     invite_link = f"https://t.me/{bot_username}?start={user_id}"
 
     await update.message.reply_text(
-        f"🎁 您的专属邀请链接：\n{invite_link}\n\n"
-        "每邀请 1 位成功注册，您将获得 2 积分。"
+        f"🌱 小芽精灵 · 邀请好友\n\n"
+        f"🔗 你的专属邀请链接：\n{invite_link}\n\n"
+        "💝 每邀请 1 位好友注册，你将获得 2 积分\n"
+        "分享给朋友，一起来星小芽探索吧！"
     )
 
 
@@ -182,15 +186,15 @@ async def use_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db: Da
     result = db.use_card_key(key_code, user_id)
 
     if result is None:
-        await update.message.reply_text("卡密不存在，请检查后重试。")
+        await update.message.reply_text("❌ 卡密不存在，请检查后重试")
     elif result == -1:
-        await update.message.reply_text("该卡密已达到使用次数上限。")
+        await update.message.reply_text("❌ 该卡密已达到使用次数上限")
     elif result == -2:
-        await update.message.reply_text("该卡密已过期。")
+        await update.message.reply_text("❌ 该卡密已过期")
     elif result == -3:
-        await update.message.reply_text("您已经使用过该卡密。")
+        await update.message.reply_text("❌ 你已经使用过该卡密")
     else:
         user = db.get_user(user_id)
         await update.message.reply_text(
-            f"卡密使用成功！\n获得积分：{result}\n当前积分：{user['balance']}"
+            f"🎉 卡密兑换成功！\n\n🎁 获得积分：+{result}\n💰 当前积分：{user['balance']} 分"
         )
