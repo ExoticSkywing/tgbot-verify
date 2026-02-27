@@ -32,4 +32,4 @@ services:
         max-file: "3"
 
     # 网络模式
-    network_mode: bridge
+    network_mode: host
