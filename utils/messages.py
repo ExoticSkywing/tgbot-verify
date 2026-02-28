@@ -1,5 +1,8 @@
 """消息模板 —— 小芽精灵（星小芽 Telegram 助手）"""
-from config import CHANNEL_URL, VERIFY_COST, HELP_NOTION_URL
+from config import (
+    CHANNEL_URL, VERIFY_COST, HELP_NOTION_URL,
+    REGISTER_REWARD, CHECKIN_REWARD, INVITE_REWARD, BIND_REWARD
+)
 
 
 def get_welcome_message(full_name: str, invited_by: bool = False) -> str:
@@ -7,19 +10,21 @@ def get_welcome_message(full_name: str, invited_by: bool = False) -> str:
     msg = (
         f"🌱 欢迎来到星小芽，{full_name}！\n"
         "我是「小芽精灵」，你的专属助手 ✨\n\n"
-        "🎁 注册成功，已赠送 1 积分\n"
+        f"🎁 注册成功，已赠送 {REGISTER_REWARD} 积分\n"
     )
     if invited_by:
-        msg += "💝 通过好友邀请加入，邀请人已获得 2 积分奖励\n"
+        msg += f"💝 通过好友邀请加入，邀请人已获得 {INVITE_REWARD} 积分奖励\n"
 
     msg += (
         "\n🚀 快速开始：\n"
         "/about - 了解小芽精灵\n"
         "/balance - 查看积分余额\n"
+        "/bind - 绑定站点账号\n"
         "/help - 完整命令列表\n\n"
         "💰 获取更多积分：\n"
-        "/qd - 每日签到 +1\n"
-        "/invite - 邀请好友 +2\n"
+        f"/bind - 绑定站点 +{BIND_REWARD}\n"
+        f"/invite - 邀请好友 +{INVITE_REWARD}\n"
+        f"/qd - 每日签到 +{CHECKIN_REWARD}\n"
         f"\n📢 加入频道获取最新动态：{CHANNEL_URL}"
     )
     return msg
@@ -31,13 +36,15 @@ def get_about_message() -> str:
         "🌱 小芽精灵 —— 星小芽专属助手\n"
         "\n"
         "✨ 功能介绍：\n"
+        "• 绑定站点，积分互通，免费换好物\n"
         "• 每日签到、邀请好友，积分多多\n"
-        "• 更多积分消耗功能即将上线，敬请期待\n"
+        "• 更多积分消耗功能即将上线\n"
         "\n"
         "💰 积分获取：\n"
-        "• 注册赠送 1 积分\n"
-        "• 每日签到 +1 积分\n"
-        "• 邀请好友 +2 积分/人\n"
+        f"• 绑定站点 +{BIND_REWARD} 积分\n"
+        f"• 邀请好友 +{INVITE_REWARD} 积分/人\n"
+        f"• 每日签到 +{CHECKIN_REWARD} 积分\n"
+        f"• 注册赠送 {REGISTER_REWARD} 积分\n"
         "• 使用卡密（按卡密面值）\n"
         f"• 加入频道：{CHANNEL_URL}\n"
         "\n"
@@ -54,9 +61,12 @@ def get_help_message(is_admin: bool = False) -> str:
         "/start - 注册 / 开始使用\n"
         "/about - 了解小芽精灵\n"
         "/balance - 查看积分余额\n"
-        "/qd - 每日签到（+1积分）\n"
-        "/invite - 邀请好友（+2积分/人）\n"
+        f"/qd - 每日签到（+{CHECKIN_REWARD}积分）\n"
+        f"/invite - 邀请好友（+{INVITE_REWARD}积分/人）\n"
         "/use <卡密> - 卡密兑换积分\n"
+        "\n"
+        "🔗 站点互通：\n"
+        f"/bind - 绑定星小芽站点（+{BIND_REWARD}积分）\n"
         "\n"
         "🚧 更多功能即将上线，敬请期待 ✨\n"
     )
@@ -81,8 +91,9 @@ def get_insufficient_balance_message(current_balance: int) -> str:
     return (
         f"😢 积分不足！需要 {VERIFY_COST} 积分，当前仅 {current_balance} 积分\n\n"
         "💡 获取积分方式：\n"
-        "• /qd 每日签到\n"
+        "• /bind 绑定站点\n"
         "• /invite 邀请好友\n"
+        "• /qd 每日签到\n"
         "• /use <卡密> 兑换积分"
     )
 

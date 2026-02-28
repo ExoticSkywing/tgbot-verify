@@ -1,13 +1,15 @@
-"""MySQL 数据库实现
+"""MySQL 数据库实现 —— 小芽精灵
 
 使用提供的MySQL服务器进行数据存储
 """
 import logging
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import pymysql
 from pymysql.cursors import DictCursor
 from dotenv import load_dotenv
+from config import REGISTER_REWARD, INVITE_REWARD, CHECKIN_REWARD, BIND_REWARD
 
 # 加载环境变量
 load_dotenv()
@@ -55,10 +57,32 @@ class MySQLDatabase:
                     balance INT DEFAULT 1,
                     is_blocked TINYINT(1) DEFAULT 0,
                     invited_by BIGINT,
+                    wp_openid VARCHAR(255) NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     last_checkin DATETIME NULL,
                     INDEX idx_username (username),
-                    INDEX idx_invited_by (invited_by)
+                    INDEX idx_invited_by (invited_by),
+                    UNIQUE INDEX idx_wp_openid (wp_openid)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+
+            # wp_openid 字段可能不存在（兼容旧表），尝试添加
+            try:
+                cursor.execute(
+                    "ALTER TABLE users ADD COLUMN wp_openid VARCHAR(255) NULL UNIQUE AFTER invited_by"
+                )
+            except pymysql.err.OperationalError:
+                pass  # 字段已存在
+
+            # OAuth 绑定状态表（临时存储 state → tg_user_id 映射）
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bind_states (
+                    state VARCHAR(64) PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_created (created_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
             )
@@ -152,16 +176,16 @@ class MySQLDatabase:
         try:
             cursor.execute(
                 """
-                INSERT INTO users (user_id, username, full_name, invited_by, created_at)
-                VALUES (%s, %s, %s, %s, NOW())
+                INSERT INTO users (user_id, username, full_name, balance, invited_by, created_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
                 """,
-                (user_id, username, full_name, invited_by),
+                (user_id, username, full_name, REGISTER_REWARD, invited_by),
             )
 
             if invited_by:
                 cursor.execute(
-                    "UPDATE users SET balance = balance + 2 WHERE user_id = %s",
-                    (invited_by,),
+                    "UPDATE users SET balance = balance + %s WHERE user_id = %s",
+                    (INVITE_REWARD, invited_by),
                 )
 
                 cursor.execute(
@@ -334,14 +358,14 @@ class MySQLDatabase:
             cursor.execute(
                 """
                 UPDATE users
-                SET balance = balance + 1, last_checkin = NOW()
+                SET balance = balance + %s, last_checkin = NOW()
                 WHERE user_id = %s 
                 AND (
                     last_checkin IS NULL 
                     OR DATE(last_checkin) < CURDATE()
                 )
                 """,
-                (user_id,),
+                (CHECKIN_REWARD, user_id),
             )
             conn.commit()
             
@@ -543,6 +567,94 @@ class MySQLDatabase:
         finally:
             cursor.close()
             conn.close()
+
+    # ---- 绑定相关方法 ----
+
+    def save_bind_state(self, state: str, user_id: int) -> bool:
+        """保存 OAuth 绑定 state（state → tg_user_id 映射）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # 清理该用户的旧 state
+            cursor.execute("DELETE FROM bind_states WHERE user_id = %s", (user_id,))
+            cursor.execute(
+                "INSERT INTO bind_states (state, user_id, created_at) VALUES (%s, %s, NOW())",
+                (state, user_id),
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"保存绑定 state 失败: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
+    def consume_bind_state(self, state: str) -> Optional[int]:
+        """消费绑定 state，返回对应的 tg_user_id（一次性使用）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                "SELECT user_id FROM bind_states WHERE state = %s AND created_at > %s",
+                (state, datetime.now() - timedelta(minutes=10)),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            user_id = row[0]
+            cursor.execute("DELETE FROM bind_states WHERE state = %s", (state,))
+            conn.commit()
+            return user_id
+        except Exception as e:
+            logger.error(f"消费绑定 state 失败: {e}")
+            conn.rollback()
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_wp_openid(self, user_id: int) -> Optional[str]:
+        """查询用户是否已绑定站点"""
+        user = self.get_user(user_id)
+        if user:
+            return user.get("wp_openid")
+        return None
+
+    def bind_wp_account(self, user_id: int, openid: str) -> bool:
+        """绑定 WP 账号并奖励积分"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                "UPDATE users SET wp_openid = %s, balance = balance + %s WHERE user_id = %s AND wp_openid IS NULL",
+                (openid, BIND_REWARD, user_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except pymysql.err.IntegrityError:
+            # openid 已被其他 TG 账号绑定
+            conn.rollback()
+            return False
+        except Exception as e:
+            logger.error(f"绑定 WP 账号失败: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
+    def generate_bind_state(self, user_id: int) -> Optional[str]:
+        """生成并保存一个新的绑定 state"""
+        state = secrets.token_urlsafe(32)
+        if self.save_bind_state(state, user_id):
+            return state
+        return None
 
 
 # 创建全局实例的别名，保持与SQLite版本的兼容性

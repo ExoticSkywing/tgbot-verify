@@ -21,6 +21,9 @@ RUN find . -type f -name "*.pyc" -delete 2>/dev/null || true
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# OAuth 回调端口
+EXPOSE 8443
+
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD pgrep -f "python.*bot.py" || exit 1

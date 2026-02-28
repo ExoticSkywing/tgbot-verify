@@ -1,4 +1,5 @@
-"""Telegram 机器人主程序"""
+"""Telegram 机器人主程序 —— 小芽精灵"""
+import asyncio
 import logging
 from functools import partial
 
@@ -22,6 +23,7 @@ from handlers.verify_commands import (
     verify4_command,
     getV4Code_command,
 )
+from handlers.bind_command import bind_command
 from handlers.admin_commands import (
     addbalance_command,
     block_command,
@@ -45,6 +47,15 @@ async def error_handler(update: object, context) -> None:
     logger.exception("处理更新时发生异常: %s", context.error, exc_info=context.error)
 
 
+async def post_init(application):
+    """应用初始化后启动 OAuth 回调服务"""
+    from oauth_server import start_oauth_server
+    db = application.bot_data["db"]
+    bot = application.bot
+    runner = await start_oauth_server(db, bot)
+    application.bot_data["oauth_runner"] = runner
+
+
 def main():
     """主函数"""
     # 初始化数据库
@@ -54,11 +65,15 @@ def main():
     application = (
         Application.builder()
         .token(BOT_TOKEN)
-        .concurrent_updates(True)  # 🔥 关键：启用并发处理多个命令
+        .concurrent_updates(True)
+        .post_init(post_init)
         .build()
     )
 
-    # 注册用户命令（使用 partial 传递 db 参数）
+    # 将 db 存入 bot_data 以便 post_init 使用
+    application.bot_data["db"] = db
+
+    # 注册用户命令
     application.add_handler(CommandHandler("start", partial(start_command, db=db)))
     application.add_handler(CommandHandler("about", partial(about_command, db=db)))
     application.add_handler(CommandHandler("help", partial(help_command, db=db)))
@@ -66,8 +81,9 @@ def main():
     application.add_handler(CommandHandler("qd", partial(checkin_command, db=db)))
     application.add_handler(CommandHandler("invite", partial(invite_command, db=db)))
     application.add_handler(CommandHandler("use", partial(use_command, db=db)))
+    application.add_handler(CommandHandler("bind", partial(bind_command, db=db)))
 
-    # 注册验证命令
+    # 注册验证命令（占位）
     application.add_handler(CommandHandler("verify", partial(verify_command, db=db)))
     application.add_handler(CommandHandler("verify2", partial(verify2_command, db=db)))
     application.add_handler(CommandHandler("verify3", partial(verify3_command, db=db)))
