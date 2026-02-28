@@ -67,6 +67,7 @@ def get_help_message(is_admin: bool = False) -> str:
         "\n"
         "🔗 站点互通：\n"
         f"/bind - 绑定星小芽站点（+{BIND_REWARD}积分）\n"
+        "/exchange <数量> - TG积分兑换站点积分\n"
         "\n"
         "🚧 更多功能即将上线，敬请期待 ✨\n"
     )

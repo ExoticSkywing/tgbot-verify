@@ -24,6 +24,7 @@ from handlers.verify_commands import (
     getV4Code_command,
 )
 from handlers.bind_command import bind_command
+from handlers.exchange_command import exchange_command
 from handlers.admin_commands import (
     addbalance_command,
     block_command,
@@ -82,6 +83,7 @@ def main():
     application.add_handler(CommandHandler("invite", partial(invite_command, db=db)))
     application.add_handler(CommandHandler("use", partial(use_command, db=db)))
     application.add_handler(CommandHandler("bind", partial(bind_command, db=db)))
+    application.add_handler(CommandHandler("exchange", partial(exchange_command, db=db)))
 
     # 注册验证命令（占位）
     application.add_handler(CommandHandler("verify", partial(verify_command, db=db)))
