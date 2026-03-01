@@ -3,7 +3,7 @@ import asyncio
 import logging
 from functools import partial
 
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 from config import BOT_TOKEN
 from database_mysql import Database
@@ -24,7 +24,8 @@ from handlers.verify_commands import (
     getV4Code_command,
 )
 from handlers.bind_command import bind_command
-from handlers.exchange_command import exchange_command
+from handlers.exchange_command import exchange_command, exchange_all_callback
+from handlers.me_command import me_command
 from handlers.admin_commands import (
     addbalance_command,
     block_command,
@@ -49,12 +50,27 @@ async def error_handler(update: object, context) -> None:
 
 
 async def post_init(application):
-    """应用初始化后启动 OAuth 回调服务"""
+    """应用初始化后启动 OAuth 回调服务 + 注册命令菜单"""
     from oauth_server import start_oauth_server
+    from telegram import BotCommand
+
     db = application.bot_data["db"]
     bot = application.bot
     runner = await start_oauth_server(db, bot)
     application.bot_data["oauth_runner"] = runner
+
+    # 注册 TG 命令菜单（用户输入 / 时可见）
+    commands = [
+        BotCommand("me", "个人信息"),
+        BotCommand("balance", "查看积分余额"),
+        BotCommand("qd", "每日签到"),
+        BotCommand("invite", "邀请好友"),
+        BotCommand("bind", "绑定站点账号"),
+        BotCommand("exchange", "TG积分兑换站点积分"),
+        BotCommand("use", "使用卡密"),
+        BotCommand("help", "帮助"),
+    ]
+    await bot.set_my_commands(commands)
 
 
 def main():
@@ -84,6 +100,10 @@ def main():
     application.add_handler(CommandHandler("use", partial(use_command, db=db)))
     application.add_handler(CommandHandler("bind", partial(bind_command, db=db)))
     application.add_handler(CommandHandler("exchange", partial(exchange_command, db=db)))
+    application.add_handler(CommandHandler("me", partial(me_command, db=db)))
+
+    # 注册回调处理器（InlineKeyboard 按钮）
+    application.add_handler(CallbackQueryHandler(partial(exchange_all_callback, db=db), pattern="^exchange_all$"))
 
     # 注册验证命令（占位）
     application.add_handler(CommandHandler("verify", partial(verify_command, db=db)))

@@ -1,12 +1,13 @@
 """积分兑换命令处理器 —— 小芽精灵
 
 将 TG 积分兑换为站点积分（1:1 比例）
+支持自定义数量和一键全部兑换
 """
 import hashlib
 import logging
 
 import httpx
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from config import (
@@ -44,40 +45,95 @@ async def exchange_command(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         )
         return
 
-    # 解析兑换数量
+    # 无参数 → 展示选择面板
     if not context.args or len(context.args) < 1:
         user = db.get_user(user_id)
         balance = user["balance"] if user else 0
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💰 一键全部兑换", callback_data="exchange_all")]
+        ]) if balance > 0 else None
+
+        hint = ""
+        if balance <= 0:
+            hint = "\n\n当前积分为 0，无法兑换"
+        else:
+            hint = (
+                "\n\n── 选择兑换方式 ──\n\n"
+                "1️⃣ 点击下方按钮，一键全部兑换\n\n"
+                "2️⃣ 自定义数量：`/exchange <数量>`"
+            )
+
         await update.message.reply_text(
             "🔄 积分兑换\n\n"
             f"💰 当前 TG 积分：{balance} 分\n"
-            f"📐 兑换比例：{EXCHANGE_RATE} TG积分 = 1 站点积分\n\n"
-            "用法：`/exchange <数量>`\n"
-            "示例：`/exchange 300`\n\n"
-            "兑换后 TG 积分将扣除，站点积分同步增加",
-            parse_mode="Markdown"
+            f"📐 兑换比例：{EXCHANGE_RATE} TG积分 = 1 站点积分"
+            f"{hint}",
+            parse_mode="Markdown",
+            reply_markup=keyboard,
         )
         return
 
+    # 有参数 → 自定义数量兑换
     try:
         amount = int(context.args[0])
     except (ValueError, IndexError):
         await update.message.reply_text("❌ 请输入有效的数字\n\n用法：`/exchange 300`", parse_mode="Markdown")
         return
 
+    # 执行兑换
+    await _do_exchange(update.message, user_id, amount, db)
+
+
+async def exchange_all_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, db: Database):
+    """处理「一键全部兑换」按钮回调"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    # 基础检查
+    if not db.user_exists(user_id):
+        await query.edit_message_text("请先使用 /start 注册")
+        return
+
+    if db.is_user_blocked(user_id):
+        await query.edit_message_text("❌ 你已被限制使用此功能")
+        return
+
+    openid = db.get_wp_openid(user_id)
+    if not openid:
+        await query.edit_message_text("⚠️ 请先使用 /bind 绑定站点账号")
+        return
+
+    user = db.get_user(user_id)
+    balance = user["balance"] if user else 0
+
+    if balance <= 0:
+        await query.edit_message_text("😢 当前 TG 积分为 0，无法兑换")
+        return
+
+    # 执行全额兑换
+    await _do_exchange(query.message, user_id, balance, db, edit=True)
+
+
+async def _do_exchange(message, user_id: int, amount: int, db: Database, edit: bool = False):
+    """执行积分兑换的核心逻辑（复用代码）"""
+    send = message.edit_text if edit else message.reply_text
+
     if amount <= 0:
-        await update.message.reply_text("❌ 兑换数量必须大于 0")
+        await send("❌ 兑换数量必须大于 0")
         return
 
     if amount > 10000:
-        await update.message.reply_text("❌ 单次兑换不能超过 10000 积分")
+        await send("❌ 单次兑换不能超过 10000 积分")
         return
 
     # 检查 TG 积分是否充足
     user = db.get_user(user_id)
     if not user or user["balance"] < amount:
         current = user["balance"] if user else 0
-        await update.message.reply_text(
+        await send(
             f"😢 TG 积分不足\n\n"
             f"需要：{amount} 积分\n"
             f"当前：{current} 积分\n\n"
@@ -85,9 +141,15 @@ async def exchange_command(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         )
         return
 
+    # 检查绑定信息
+    openid = db.get_wp_openid(user_id)
+    if not openid:
+        await send("⚠️ 请先使用 /bind 绑定站点账号")
+        return
+
     # 检查 OAuth 配置
     if not OAUTH_CLIENT_ID or not OAUTH_CLIENT_SECRET:
-        await update.message.reply_text("⚠️ 兑换功能暂未开放")
+        await send("⚠️ 兑换功能暂未开放")
         logger.warning("OAuth 配置不完整，无法兑换积分")
         return
 
@@ -116,20 +178,20 @@ async def exchange_command(update: Update, context: ContextTypes.DEFAULT_TYPE, d
                 error_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
                 error_msg = error_data.get("message", resp.text[:100])
                 logger.error(f"积分兑换 API 失败: {resp.status_code} {error_msg}")
-                await update.message.reply_text(f"❌ 兑换失败：{error_msg}\n\n请稍后重试")
+                await send(f"❌ 兑换失败：{error_msg}\n\n请稍后重试")
                 return
 
             result = resp.json()
 
     except Exception as e:
         logger.error(f"积分兑换请求异常: {e}")
-        await update.message.reply_text("❌ 兑换请求失败，请稍后重试")
+        await send("❌ 兑换请求失败，请稍后重试")
         return
 
     # API 调用成功，扣除 TG 积分
     if not db.deduct_balance(user_id, amount):
         logger.error(f"TG 积分扣除失败: user={user_id}, amount={amount}")
-        await update.message.reply_text("⚠️ 站点积分已充值，但 TG 积分扣除异常，请联系管理员")
+        await send("⚠️ 站点积分已充值，但 TG 积分扣除异常，请联系管理员")
         return
 
     # 获取更新后的余额
@@ -137,7 +199,7 @@ async def exchange_command(update: Update, context: ContextTypes.DEFAULT_TYPE, d
     tg_balance = user["balance"] if user else "?"
     site_balance = result.get("points", "?")
 
-    await update.message.reply_text(
+    await send(
         "🎉 兑换成功！\n\n"
         f"📤 消耗 TG 积分：-{amount}\n"
         f"📥 获得站点积分：+{site_points}\n\n"

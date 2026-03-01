@@ -233,6 +233,25 @@ class MySQLDatabase:
             cursor.close()
             conn.close()
 
+    def get_invite_count(self, user_id: int) -> int:
+        """获取用户的 TG 邀请好友人数"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                "SELECT COUNT(*) FROM invitations WHERE inviter_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+        except Exception as e:
+            logger.error(f"查询邀请人数失败: {e}")
+            return 0
+        finally:
+            cursor.close()
+            conn.close()
+
     def user_exists(self, user_id: int) -> bool:
         """检查用户是否存在"""
         return self.get_user(user_id) is not None

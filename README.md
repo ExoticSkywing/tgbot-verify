@@ -155,11 +155,14 @@ docker run -d \
 
 ```bash
 /start              # 开始使用（注册）
-/about              # 了解机器人功能
-/balance            # 查看积分余额
-/qd                 # 每日签到（+1积分）
-/invite             # 生成邀请链接（+2积分/人）
+/me                 # 查看个人信息（TG + 站点）
+/balance            # 查看积分余额（TG + 站点）
+/qd                 # 每日签到（+75积分）
+/invite             # 生成邀请链接（+80积分/人）
 /use <卡密>         # 使用卡密兑换积分
+/bind               # 绑定星小芽站点账号（+120积分）
+/exchange [数量]    # TG积分兑换站点积分（支持一键全部兑换）
+/about              # 了解小芽精灵
 /verify <链接>      # Gemini One Pro 认证
 /verify2 <链接>     # ChatGPT Teacher K12 认证
 /verify3 <链接>     # Spotify Student 认证
@@ -347,6 +350,25 @@ in the Software without restriction...
 ---
 
 ## 📝 更新日志
+
+### v3.0.0 (2026-03-01) — 小芽精灵
+
+> 品牌重塑为「小芽精灵」，新增站点互通体系
+
+**🔗 站点互通**
+- ✨ `/bind` — OAuth2 绑定星小芽站点账号（首次绑定 +120 积分）
+- ✨ `/exchange [数量]` — TG 积分兑换站点积分（支持一键全部兑换按钮）
+- ✨ `/balance` — 同时展示 TG 积分 + 站点积分余额
+
+**👤 个人信息**
+- ✨ `/me` — 查看个人信息（TG 信息 + 站点信息分栏展示）
+- 📊 展示：TG ID、昵称、注册时间、签到时间、邀请人数、绑定状态、站点昵称、推荐人数
+
+**⚙️ 基础设施**
+- 🔄 品牌更新：全局文案更新为「小芽精灵」
+- 📋 TG 命令菜单：启动时自动注册 `set_my_commands`
+- 🔒 OAuth2 回调服务：内置 aiohttp 处理绑定回调
+- 🐳 Docker 化部署：独立 Dockerfile + docker-compose
 
 ### v2.0.0 (2025-01-12)
 

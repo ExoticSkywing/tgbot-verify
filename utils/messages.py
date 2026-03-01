@@ -60,7 +60,7 @@ def get_help_message(is_admin: bool = False) -> str:
         "📌 基础命令：\n"
         "/start - 注册 / 开始使用\n"
         "/about - 了解小芽精灵\n"
-        "/balance - 查看积分余额\n"
+        "/me - 个人信息 | /balance - 查看积分余额\n"
         f"/qd - 每日签到（+{CHECKIN_REWARD}积分）\n"
         f"/invite - 邀请好友（+{INVITE_REWARD}积分/人）\n"
         "/use <卡密> - 卡密兑换积分\n"
