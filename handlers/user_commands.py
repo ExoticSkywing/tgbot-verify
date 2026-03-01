@@ -6,7 +6,10 @@ from urllib.parse import quote
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import ADMIN_USER_ID, CHECKIN_REWARD, INVITE_REWARD, REGISTER_REWARD
+from config import (
+    ADMIN_USER_ID, CHECKIN_REWARD, INVITE_REWARD, REGISTER_REWARD,
+    OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_BASE_URL,
+)
 from database_mysql import Database
 from utils.checks import reject_group_command
 from utils.messages import (
@@ -74,7 +77,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db: D
 
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db: Database):
-    """处理 /balance 命令"""
+    """处理 /balance 命令 — 查看 TG 积分 + 站点积分"""
     if await reject_group_command(update):
         return
 
@@ -89,8 +92,44 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db
         await update.message.reply_text("请先使用 /start 注册。")
         return
 
+    tg_balance = user['balance']
+
+    # 查询站点积分（仅已绑定用户）
+    openid = db.get_wp_openid(user_id)
+    site_text = ""
+    if openid and OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET:
+        try:
+            import hashlib
+            sign_str = f"{OAUTH_CLIENT_ID}{openid}{OAUTH_CLIENT_SECRET}"
+            sign = hashlib.md5(sign_str.encode()).hexdigest()
+
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    f"{OAUTH_BASE_URL}/points/balance",
+                    params={
+                        "appid": OAUTH_CLIENT_ID,
+                        "openid": openid,
+                        "sign": sign,
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    site_points = data.get("points", "?")
+                    site_text = f"🌱 站点积分：{site_points} 分\n"
+        except Exception as e:
+            logger.warning(f"查询站点积分失败: {e}")
+
+    # 组装消息
+    bind_hint = ""
+    if not openid:
+        bind_hint = "\n💡 使用 /bind 绑定站点，即可查看站点积分"
+
     await update.message.reply_text(
-        f"🌱 小芽精灵 · 积分\n\n💰 当前积分：{user['balance']} 分\n\n"
+        f"🌱 小芽精灵 · 积分\n\n"
+        f"💰 TG 积分：{tg_balance} 分\n"
+        f"{site_text}"
+        f"{bind_hint}\n"
         "获取更多积分：\n"
         "/bind 绑定站点 · /invite 邀请好友 · /qd 签到"
     )
