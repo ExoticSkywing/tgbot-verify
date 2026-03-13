@@ -7,9 +7,11 @@ import logging
 import httpx
 from aiohttp import web
 
+import pymysql
 from config import (
     OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_BASE_URL,
-    OAUTH_REDIRECT_URI, OAUTH_CALLBACK_PORT, BIND_REWARD
+    OAUTH_REDIRECT_URI, OAUTH_CALLBACK_PORT, BIND_REWARD,
+    WP_DB_HOST, WP_DB_PORT, WP_DB_USER, WP_DB_PASSWORD, WP_DB_NAME, WP_TABLE_PREFIX,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,6 +84,41 @@ p { color: #666; font-size: 16px; line-height: 1.6; }
 </div>
 </body>
 </html>"""
+
+
+def _write_tg_uid_to_wp(wp_user_id: int, tg_user_id: int):
+    """将 TG user ID 回写到 WordPress usermeta，使 WP 成为身份数据中心"""
+    try:
+        conn = pymysql.connect(
+            host=WP_DB_HOST, port=WP_DB_PORT,
+            user=WP_DB_USER, password=WP_DB_PASSWORD,
+            database=WP_DB_NAME, charset="utf8mb4", autocommit=True,
+        )
+        try:
+            with conn.cursor() as cur:
+                meta_key = "_xingxy_telegram_uid"
+                cur.execute(
+                    f"SELECT umeta_id FROM {WP_TABLE_PREFIX}usermeta "
+                    "WHERE user_id = %s AND meta_key = %s LIMIT 1",
+                    (wp_user_id, meta_key),
+                )
+                if cur.fetchone():
+                    cur.execute(
+                        f"UPDATE {WP_TABLE_PREFIX}usermeta SET meta_value = %s "
+                        "WHERE user_id = %s AND meta_key = %s",
+                        (str(tg_user_id), wp_user_id, meta_key),
+                    )
+                else:
+                    cur.execute(
+                        f"INSERT INTO {WP_TABLE_PREFIX}usermeta (user_id, meta_key, meta_value) "
+                        "VALUES (%s, %s, %s)",
+                        (wp_user_id, meta_key, str(tg_user_id)),
+                    )
+            logger.info(f"[bind] 回写 WP usermeta: user_id={wp_user_id}, _xingxy_telegram_uid={tg_user_id}")
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"回写 WP usermeta 失败（不影响绑定）: {e}")
 
 
 async def oauth_callback(request):
@@ -168,6 +205,18 @@ async def oauth_callback(request):
                     content_type="text/html"
                 )
 
+            # 第2b步：获取 unionid (WP user ID)，用于回写 usermeta
+            wp_uid = None
+            try:
+                unionid_resp = await client.get(
+                    f"{OAUTH_BASE_URL}/unionid",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                if unionid_resp.status_code == 200:
+                    wp_uid = unionid_resp.json().get("unionid")
+            except Exception as e:
+                logger.warning(f"获取 unionid 失败（不阻塞绑定）: {e}")
+
         # 第3步：写入绑定关系 + 奖励积分
         success = db.bind_wp_account(user_id, openid)
         if not success:
@@ -177,6 +226,10 @@ async def oauth_callback(request):
                 ),
                 content_type="text/html"
             )
+
+        # 第3b步：回写 _xingxy_telegram_uid 到 WP usermeta
+        if wp_uid:
+            _write_tg_uid_to_wp(int(wp_uid), user_id)
 
         # 第4步：通过 TG Bot API 通知用户
         try:

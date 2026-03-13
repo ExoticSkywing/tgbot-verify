@@ -28,5 +28,13 @@ OAUTH_BASE_URL = os.getenv("OAUTH_BASE_URL", "https://xingxy.manyuzo.com/wp-json
 OAUTH_REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "")
 OAUTH_CALLBACK_PORT = int(os.getenv("OAUTH_CALLBACK_PORT", "8443"))
 
+# WordPress 数据库（用于回写 _xingxy_telegram_uid）
+WP_DB_HOST = os.getenv("WP_DB_HOST", "localhost")
+WP_DB_PORT = int(os.getenv("WP_DB_PORT", "3306"))
+WP_DB_USER = os.getenv("WP_DB_USER", "xingxy_manyuzo")
+WP_DB_PASSWORD = os.getenv("WP_DB_PASSWORD", "xingxymanyuzo_8501")
+WP_DB_NAME = os.getenv("WP_DB_NAME", "xingxy_manyuzo")
+WP_TABLE_PREFIX = os.getenv("WP_TABLE_PREFIX", "wp_")
+
 # 帮助链接
 HELP_NOTION_URL = "https://rhetorical-era-3f3.notion.site/dd78531dbac745af9bbac156b51da9cc"
