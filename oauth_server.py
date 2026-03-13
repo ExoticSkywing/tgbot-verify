@@ -7,11 +7,11 @@ import logging
 import httpx
 from aiohttp import web
 
-import pymysql
+import hashlib
 from config import (
     OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_BASE_URL,
     OAUTH_REDIRECT_URI, OAUTH_CALLBACK_PORT, BIND_REWARD,
-    WP_DB_HOST, WP_DB_PORT, WP_DB_USER, WP_DB_PASSWORD, WP_DB_NAME, WP_TABLE_PREFIX,
+    INTERNAL_API_KEY,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,20 +59,20 @@ BIND_FAIL_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>绑定失败 - 小芽精灵</title>
 <style>
-body {
+body {{
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     display: flex; justify-content: center; align-items: center;
     min-height: 100vh; margin: 0;
     background: linear-gradient(135deg, #fce4ec 0%, #f8bbd0 100%);
-}
-.card {
+}}
+.card {{
     background: white; border-radius: 16px; padding: 40px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.1); text-align: center;
-    max-width: 400px; width: 90%;
-}
-.icon { font-size: 64px; margin-bottom: 16px; }
-h1 { color: #c62828; font-size: 24px; margin: 0 0 12px; }
-p { color: #666; font-size: 16px; line-height: 1.6; }
+    max-width: 400px; width: 90%%;
+}}
+.icon {{ font-size: 64px; margin-bottom: 16px; }}
+h1 {{ color: #c62828; font-size: 24px; margin: 0 0 12px; }}
+p {{ color: #666; font-size: 16px; line-height: 1.6; }}
 </style>
 </head>
 <body>
@@ -86,39 +86,62 @@ p { color: #666; font-size: 16px; line-height: 1.6; }
 </html>"""
 
 
-def _write_tg_uid_to_wp(wp_user_id: int, tg_user_id: int):
-    """将 TG user ID 回写到 WordPress usermeta，使 WP 成为身份数据中心"""
+# ═══════════════════════════════════════════════════════════════
+# TG 侧内部 API —— 供空投机等兄弟服务调用
+# ═══════════════════════════════════════════════════════════════
+
+def _verify_internal_sign(params: dict, sign: str) -> bool:
+    """验证内部 API 签名: md5(sorted_values + INTERNAL_API_KEY)"""
+    raw = "".join(str(params[k]) for k in sorted(params)) + INTERNAL_API_KEY
+    return hashlib.md5(raw.encode()).hexdigest() == sign
+
+
+async def api_check_bind(request):
+    """GET /api/check-bind?tg_uid=xxx&sign=xxx
+    查询 TG 用户是否已绑定星小芽账号（查精灵本地 DB）"""
+    tg_uid = request.query.get("tg_uid", "").strip()
+    sign = request.query.get("sign", "").strip()
+
+    if not tg_uid or not sign:
+        return web.json_response({"error": "missing params"}, status=400)
+
+    if not _verify_internal_sign({"tg_uid": tg_uid}, sign):
+        return web.json_response({"error": "invalid sign"}, status=403)
+
+    db = request.app["db"]
     try:
-        conn = pymysql.connect(
-            host=WP_DB_HOST, port=WP_DB_PORT,
-            user=WP_DB_USER, password=WP_DB_PASSWORD,
-            database=WP_DB_NAME, charset="utf8mb4", autocommit=True,
-        )
-        try:
-            with conn.cursor() as cur:
-                meta_key = "_xingxy_telegram_uid"
-                cur.execute(
-                    f"SELECT umeta_id FROM {WP_TABLE_PREFIX}usermeta "
-                    "WHERE user_id = %s AND meta_key = %s LIMIT 1",
-                    (wp_user_id, meta_key),
-                )
-                if cur.fetchone():
-                    cur.execute(
-                        f"UPDATE {WP_TABLE_PREFIX}usermeta SET meta_value = %s "
-                        "WHERE user_id = %s AND meta_key = %s",
-                        (str(tg_user_id), wp_user_id, meta_key),
-                    )
-                else:
-                    cur.execute(
-                        f"INSERT INTO {WP_TABLE_PREFIX}usermeta (user_id, meta_key, meta_value) "
-                        "VALUES (%s, %s, %s)",
-                        (wp_user_id, meta_key, str(tg_user_id)),
-                    )
-            logger.info(f"[bind] 回写 WP usermeta: user_id={wp_user_id}, _xingxy_telegram_uid={tg_user_id}")
-        finally:
-            conn.close()
+        wp_openid = db.get_wp_openid(int(tg_uid))
+        bound = wp_openid is not None and wp_openid != ""
+        return web.json_response({"bound": bound})
     except Exception as e:
-        logger.error(f"回写 WP usermeta 失败（不影响绑定）: {e}")
+        logger.error(f"[api] check-bind error: {e}")
+        return web.json_response({"error": "internal error"}, status=500)
+
+
+async def _write_tg_uid_via_api(openid: str, tg_user_id: int):
+    """通过 zibll-oauth REST API 将 TG user ID 写入 WP usermeta"""
+    try:
+        tg_uid_str = str(tg_user_id)
+        sign = hashlib.md5(
+            (OAUTH_CLIENT_ID + openid + tg_uid_str + OAUTH_CLIENT_SECRET).encode()
+        ).hexdigest()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{OAUTH_BASE_URL}/user/bindtg",
+                data={
+                    "appid": OAUTH_CLIENT_ID,
+                    "openid": openid,
+                    "tg_uid": tg_uid_str,
+                    "sign": sign,
+                },
+            )
+        if resp.status_code == 200:
+            data = resp.json()
+            logger.info(f"[bind] API 回写 tg_uid 成功: wp_user={data.get('user_id')}, tg_uid={tg_user_id}")
+        else:
+            logger.warning(f"[bind] API 回写 tg_uid 失败: {resp.status_code} {resp.text}")
+    except Exception as e:
+        logger.error(f"回写 tg_uid API 调用失败（不影响绑定）: {e}")
 
 
 async def oauth_callback(request):
@@ -205,18 +228,6 @@ async def oauth_callback(request):
                     content_type="text/html"
                 )
 
-            # 第2b步：获取 unionid (WP user ID)，用于回写 usermeta
-            wp_uid = None
-            try:
-                unionid_resp = await client.get(
-                    f"{OAUTH_BASE_URL}/unionid",
-                    headers={"Authorization": f"Bearer {access_token}"},
-                )
-                if unionid_resp.status_code == 200:
-                    wp_uid = unionid_resp.json().get("unionid")
-            except Exception as e:
-                logger.warning(f"获取 unionid 失败（不阻塞绑定）: {e}")
-
         # 第3步：写入绑定关系 + 奖励积分
         success = db.bind_wp_account(user_id, openid)
         if not success:
@@ -227,9 +238,8 @@ async def oauth_callback(request):
                 content_type="text/html"
             )
 
-        # 第3b步：回写 _xingxy_telegram_uid 到 WP usermeta
-        if wp_uid:
-            _write_tg_uid_to_wp(int(wp_uid), user_id)
+        # 第3b步：通过 zibll-oauth API 回写 _xingxy_telegram_uid
+        await _write_tg_uid_via_api(openid, user_id)
 
         # 第4步：通过 TG Bot API 通知用户
         try:
@@ -266,6 +276,7 @@ def create_oauth_app(db, bot):
     app["db"] = db
     app["bot"] = bot
     app.router.add_get("/oauth/callback", oauth_callback)
+    app.router.add_get("/api/check-bind", api_check_bind)
     return app
 
 

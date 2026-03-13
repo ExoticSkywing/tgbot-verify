@@ -19,6 +19,14 @@ services:
       - MYSQL_USER=${MYSQL_USER:-tgbot_user}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-tgbot_verify}
+      # OAuth 配置（zibll-oauth 应用）
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - OAUTH_BASE_URL=${OAUTH_BASE_URL}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI}
+      - OAUTH_CALLBACK_PORT=${OAUTH_CALLBACK_PORT:-8443}
+      # 内部 API 密钥（TG 侧服务间通信，必须在 .env 中配置）
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
 
     # 日志持久化
     volumes:

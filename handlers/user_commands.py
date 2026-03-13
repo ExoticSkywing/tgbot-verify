@@ -31,6 +31,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE, db: 
     username = user.username or ""
     full_name = user.full_name or ""
 
+    # deep link: /start bind → 自动注册 + 触发绑定流程
+    if context.args and context.args[0] == "bind":
+        if not db.user_exists(user_id):
+            db.create_user(user_id, username, full_name, None)
+        from handlers.bind_command import bind_command
+        await bind_command(update, context, db=db)
+        return
+
     # 已初始化直接返回
     if db.user_exists(user_id):
         await update.message.reply_text(

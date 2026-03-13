@@ -8,7 +8,7 @@ load_dotenv()
 # Telegram Bot 配置
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "pk_oa")
-CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/pk_oa")
+CHANNEL_URL = os.getenv("CHANNEL_URL", "")
 
 # 管理员配置
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "123456789"))
@@ -24,17 +24,12 @@ EXCHANGE_RATE = 1       # 兑换比例：1 TG积分 = 1 站点积分
 # OAuth 配置（zibll-oauth 应用）
 OAUTH_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "")
 OAUTH_CLIENT_SECRET = os.getenv("OAUTH_CLIENT_SECRET", "")
-OAUTH_BASE_URL = os.getenv("OAUTH_BASE_URL", "https://xingxy.manyuzo.com/wp-json/zibll-oauth/v1")
+OAUTH_BASE_URL = os.getenv("OAUTH_BASE_URL", "")
 OAUTH_REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "")
 OAUTH_CALLBACK_PORT = int(os.getenv("OAUTH_CALLBACK_PORT", "8443"))
 
-# WordPress 数据库（用于回写 _xingxy_telegram_uid）
-WP_DB_HOST = os.getenv("WP_DB_HOST", "localhost")
-WP_DB_PORT = int(os.getenv("WP_DB_PORT", "3306"))
-WP_DB_USER = os.getenv("WP_DB_USER", "xingxy_manyuzo")
-WP_DB_PASSWORD = os.getenv("WP_DB_PASSWORD", "xingxymanyuzo_8501")
-WP_DB_NAME = os.getenv("WP_DB_NAME", "xingxy_manyuzo")
-WP_TABLE_PREFIX = os.getenv("WP_TABLE_PREFIX", "wp_")
+# 内部 API 密钥（TG 侧其他服务调用精灵 API 时验证身份）
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 # 帮助链接
 HELP_NOTION_URL = "https://rhetorical-era-3f3.notion.site/dd78531dbac745af9bbac156b51da9cc"
