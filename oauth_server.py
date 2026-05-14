@@ -118,30 +118,40 @@ async def api_check_bind(request):
         return web.json_response({"error": "internal error"}, status=500)
 
 
-async def _write_tg_uid_via_api(openid: str, tg_user_id: int):
-    """通过 zibll-oauth REST API 将 TG user ID 写入 WP usermeta"""
+async def _write_tg_uid_via_api(
+    openid: str,
+    tg_user_id: int,
+    tg_username: str = "",
+    tg_display_name: str = "",
+):
+    """通过 zibll-oauth REST API 将 TG 绑定信息写入 WP usermeta"""
     try:
         tg_uid_str = str(tg_user_id)
         sign = hashlib.md5(
             (OAUTH_CLIENT_ID + openid + tg_uid_str + OAUTH_CLIENT_SECRET).encode()
         ).hexdigest()
+        payload = {
+            "appid": OAUTH_CLIENT_ID,
+            "openid": openid,
+            "tg_uid": tg_uid_str,
+            "sign": sign,
+        }
+        if tg_username:
+            payload["tg_username"] = tg_username
+        if tg_display_name:
+            payload["tg_display_name"] = tg_display_name
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{OAUTH_BASE_URL}/user/bindtg",
-                data={
-                    "appid": OAUTH_CLIENT_ID,
-                    "openid": openid,
-                    "tg_uid": tg_uid_str,
-                    "sign": sign,
-                },
+                data=payload,
             )
         if resp.status_code == 200:
             data = resp.json()
-            logger.info(f"[bind] API 回写 tg_uid 成功: wp_user={data.get('user_id')}, tg_uid={tg_user_id}")
+            logger.info(f"[bind] API 回写 TG 信息成功: wp_user={data.get('user_id')}, tg_uid={tg_user_id}")
         else:
-            logger.warning(f"[bind] API 回写 tg_uid 失败: {resp.status_code} {resp.text}")
+            logger.warning(f"[bind] API 回写 TG 信息失败: {resp.status_code} {resp.text}")
     except Exception as e:
-        logger.error(f"回写 tg_uid API 调用失败（不影响绑定）: {e}")
+        logger.error(f"回写 TG 信息 API 调用失败（不影响绑定）: {e}")
 
 
 async def oauth_callback(request):
@@ -238,8 +248,11 @@ async def oauth_callback(request):
                 content_type="text/html"
             )
 
-        # 第3b步：通过 zibll-oauth API 回写 _xingxy_telegram_uid
-        await _write_tg_uid_via_api(openid, user_id)
+        # 第3b步：通过 zibll-oauth API 回写 TG 绑定信息
+        tg_user = db.get_user(user_id)
+        tg_uname = tg_user.get("username", "") if tg_user else ""
+        tg_fname = tg_user.get("full_name", "") if tg_user else ""
+        await _write_tg_uid_via_api(openid, user_id, tg_uname, tg_fname)
 
         # 第4步：通过 TG Bot API 通知用户
         try:

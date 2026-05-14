@@ -24,6 +24,7 @@ from handlers.verify_commands import (
     getV4Code_command,
 )
 from handlers.bind_command import bind_command
+from handlers.unbind_command import unbind_command, unbind_callback
 from handlers.exchange_command import exchange_command, exchange_all_callback
 from handlers.me_command import me_command
 from handlers.admin_commands import (
@@ -66,6 +67,7 @@ async def post_init(application):
         BotCommand("qd", "每日签到"),
         BotCommand("invite", "邀请好友"),
         BotCommand("bind", "绑定站点账号"),
+        BotCommand("unbind", "解绑站点账号"),
         BotCommand("exchange", "TG积分兑换站点积分"),
         BotCommand("use", "使用卡密"),
         BotCommand("help", "帮助"),
@@ -99,6 +101,9 @@ def main():
     application.add_handler(CommandHandler("invite", partial(invite_command, db=db)))
     application.add_handler(CommandHandler("use", partial(use_command, db=db)))
     application.add_handler(CommandHandler("bind", partial(bind_command, db=db)))
+    application.add_handler(CommandHandler("unbind", partial(unbind_command, db=db)))
+    # unbind 回调：申请 / 批准 / 拒绝
+    application.add_handler(CallbackQueryHandler(partial(unbind_callback, db=db), pattern="^unbind_"))
     application.add_handler(CommandHandler("exchange", partial(exchange_command, db=db)))
     application.add_handler(CommandHandler("me", partial(me_command, db=db)))
 

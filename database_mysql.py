@@ -668,6 +668,25 @@ class MySQLDatabase:
             cursor.close()
             conn.close()
 
+    def unbind_wp_account(self, user_id: int) -> bool:
+        """解绑 WP 账号（清空 wp_openid）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE users SET wp_openid = NULL WHERE user_id = %s AND wp_openid IS NOT NULL",
+                (user_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"解绑 WP 账号失败: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
     def generate_bind_state(self, user_id: int) -> Optional[str]:
         """生成并保存一个新的绑定 state"""
         state = secrets.token_urlsafe(32)
